@@ -464,19 +464,21 @@ function applyRolePermissions(){
   if(usersNav)usersNav.style.display=admin?"flex":"none";
   if(!admin&&document.querySelector(".view.active")&&document.querySelector(".view.active").id==="sideView")showView("board");
 }
+var _lastFirebaseSnapshot="";
 function load(){
   // Load localStorage for instant first render
   try{tasks=JSON.parse(storageGet(key))||seed.slice()}catch(e){tasks=seed.slice()}
   render();
-  // Real-time listener — Firebase is always source of truth
+  // Real-time listener — only re-render when data actually changes
   db.collection(fbCol).doc("tasks").onSnapshot(function(doc){
     if(doc.exists&&doc.data()&&doc.data().list&&doc.data().list.length>0){
-      // Firebase has data — always use it
+      var incoming=JSON.stringify(doc.data().list);
+      if(incoming===_lastFirebaseSnapshot)return; // no change, skip render
+      _lastFirebaseSnapshot=incoming;
       tasks=doc.data().list;
       storageSet(key,JSON.stringify(tasks));
       render();
     } else {
-      // Firebase empty — push local data up
       if(tasks.length>0){persistToFirebase();}
     }
   },function(e){console.warn("Firebase error",e);});
