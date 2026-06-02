@@ -395,7 +395,7 @@ var seed=[
   {id:8,name:"ออกแบบ mockup กล่องสบู่",desc:"ทำ 2 direction พร้อมส่งตัวอย่างสี",column:"praew",assignee:"แพรว",due:"2026-06-01",tag:"ดีไซน์",done:false,comments:5,attachments:2,score:4},
   {id:9,name:"พิมพ์โปสเตอร์ A2",desc:"งานในร้าน เคลือบด้านและตัดขอบ",column:"guy",assignee:"กาย",due:"2026-05-31",tag:"งานพิมพ์ที่ร้าน",done:false,comments:1,attachments:0,score:3}
 ];
-var tasks=[],editingId=null,dragId=null,memoryStore={},pendingFile={name:"",data:""};
+var tasks=[],editingId=null,dragId=null,memoryStore={},pendingFile={name:"",data:""},isSavingTask=false;
 var key="kata_project_dashboard_v1",dataSavedAtKey="kata_project_dashboard_saved_at_v1",sessionKey="kata_session_v1",usersKey="kata_users_v1",currentUser=null;
 var defaultUsers=[{username:"admin",password:"admin1234",displayName:"Admin",role:"admin"},{username:"kata",password:"1234",displayName:"Kata Team",role:"member"}],users=[];
 function storageGet(k){try{return window.localStorage?localStorage.getItem(k):memoryStore[k]}catch(e){return memoryStore[k]||null}}
@@ -713,6 +713,7 @@ function compressImageFile(file){
   });
 }
 function openTask(id){
+  isSavingTask=false;
   editingId=(id!==undefined&&id!==null&&id!=="")?(+id||id):null;
   var today=new Date().toISOString().slice(0,10);
   var t=tasks.find(function(x){return +x.id===+editingId})||{name:"",desc:"",column:"lead",assignee:people[0],due:today,tag:tags[0],done:false,comments:0,attachments:0,score:5,fileName:"",fileData:""};
@@ -725,12 +726,14 @@ function openTask(id){
   qs("fName").value=t.name;qs("fDesc").value=t.desc;qs("fDue").value=t.due;qs("fDeliverDate").value=t.deliverDate||"";qs("fDone").value=String(!!t.done);qs("fScore").value=t.score||5;
   qs("fFile").value="";renderPreview();
   qs("fAssignee").disabled=false;
+  qs("saveTaskBtn").disabled=false;qs("saveTaskBtn").textContent="บันทึก";
   qs("deleteBtn").style.visibility=(editingId&&isAdmin())?"visible":"hidden";qs("overlay").classList.add("open");qs("drawer").classList.add("open");setTimeout(function(){qs("fName").focus()},80);
 }
-function closeTask(){qs("overlay").classList.remove("open");qs("drawer").classList.remove("open");editingId=null}
+function closeTask(){isSavingTask=false;qs("saveTaskBtn").disabled=false;qs("saveTaskBtn").textContent="บันทึก";qs("overlay").classList.remove("open");qs("drawer").classList.remove("open");editingId=null}
 async function saveTask(){
   try{
     var saveBtn=qs("saveTaskBtn");
+    if(isSavingTask)return;
     if(editingId&&!isAdmin()){toast("Member แก้งานเดิมไม่ได้");return}
     var nameVal=qs("fName").value.trim();
     if(!nameVal){
@@ -774,6 +777,7 @@ async function saveTask(){
     // reset filters so saved task is always visible
     qs("assigneeFilter").value="";
     qs("tagFilter").value="";
+    isSavingTask=true;
     if(saveBtn){saveBtn.disabled=true;saveBtn.textContent="กำลังบันทึก...";}
     var savedOk=await persist();
     if(!savedOk)return;
@@ -782,6 +786,7 @@ async function saveTask(){
     console.error("saveTask error:",err);
     toast("บันทึกไม่สำเร็จ: "+(err&&err.message?err.message:"ตรวจสอบข้อมูลอีกครั้ง"));
   }finally{
+    isSavingTask=false;
     var btn=qs("saveTaskBtn");
     if(btn){btn.disabled=false;btn.textContent="บันทึก";}
   }
