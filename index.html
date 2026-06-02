@@ -463,24 +463,24 @@ function applyRolePermissions(){
   if(!admin&&document.querySelector(".view.active")&&document.querySelector(".view.active").id==="sideView")showView("board");
 }
 function load(){
-  // Firebase is single source of truth — always load from Firebase first
+  // 1. Load localStorage immediately for instant render
+  try{tasks=JSON.parse(storageGet(key))||seed.slice()}catch(e){tasks=seed.slice()}
+  render();
+  // 2. onSnapshot — real-time sync, only overwrite if Firebase has valid data
   db.collection(fbCol).doc("tasks").onSnapshot(function(doc){
-    if(doc.exists&&doc.data()&&doc.data().list&&doc.data().list.length){
-      tasks=doc.data().list;
-      storageSet(key,JSON.stringify(tasks));
-    } else {
-      // Firebase empty — push localStorage or seed to Firebase
-      try{tasks=JSON.parse(storageGet(key))||seed.slice()}catch(e){tasks=seed.slice()}
-      if(!tasks.length)tasks=seed.slice();
+    if(doc.exists&&doc.data()&&doc.data().list&&doc.data().list.length>0){
+      var fbTasks=doc.data().list;
+      // Only update if Firebase has same or more tasks than local (prevent overwrite with old data)
+      if(fbTasks.length>=tasks.length||tasks.length===0){
+        tasks=fbTasks;
+        storageSet(key,JSON.stringify(tasks));
+        render();
+      }
+    } else if(tasks.length>0){
+      // Firebase empty but we have local data — push to Firebase
       persistToFirebase();
     }
-    render();
-  },function(e){
-    // Firebase failed — fall back to localStorage
-    console.warn("Firebase error",e);
-    try{tasks=JSON.parse(storageGet(key))||seed.slice()}catch(ex){tasks=seed.slice()}
-    render();
-  });
+  },function(e){console.warn("Firebase snapshot error",e);});
 }
 function persistToFirebase(){
   var tasksToSave=tasks.map(function(t){var c=Object.assign({},t);if(c.fileData&&c.fileData.length>50000)delete c.fileData;return c;});
