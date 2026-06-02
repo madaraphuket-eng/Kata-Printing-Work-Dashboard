@@ -688,6 +688,30 @@ function renderPreview(){
   p.innerHTML=(isImage?'<img src="'+pendingFile.data+'" alt="'+escapeHtml(pendingFile.name)+'">':'')+'<div><span>'+escapeHtml(pendingFile.name)+'</span><button class="link-btn" type="button" onclick="clearFile(event)">ลบไฟล์</button></div>';
 }
 function clearFile(e){if(e)e.stopPropagation();pendingFile={name:"",data:""};qs("fFile").value="";renderPreview()}
+function compressImageFile(file){
+  var maxBytes=450000,maxSide=1280;
+  return new Promise(function(resolve,reject){
+    var img=new Image(),url=URL.createObjectURL(file);
+    img.onload=function(){
+      URL.revokeObjectURL(url);
+      var w=img.naturalWidth||img.width,h=img.naturalHeight||img.height,scale=Math.min(1,maxSide/Math.max(w,h));
+      var canvas=document.createElement("canvas"),ctx=canvas.getContext("2d");
+      function draw(s,q){
+        canvas.width=Math.max(1,Math.round(w*s));
+        canvas.height=Math.max(1,Math.round(h*s));
+        ctx.clearRect(0,0,canvas.width,canvas.height);
+        ctx.drawImage(img,0,0,canvas.width,canvas.height);
+        return canvas.toDataURL("image/jpeg",q);
+      }
+      var q=.82,data=draw(scale,q);
+      while(data.length>maxBytes&&q>.45){q-=.08;data=draw(scale,q);}
+      while(data.length>maxBytes&&scale>.35){scale*=.85;q=.72;data=draw(scale,q);}
+      resolve(data);
+    };
+    img.onerror=function(){URL.revokeObjectURL(url);reject(new Error("อ่านรูปไม่สำเร็จ"))};
+    img.src=url;
+  });
+}
 function openTask(id){
   editingId=(id!==undefined&&id!==null&&id!=="")?(+id||id):null;
   var today=new Date().toISOString().slice(0,10);
@@ -1027,13 +1051,29 @@ Object.assign(window,{doLogin:doLogin,doLogout:doLogout,openTask:openTask,closeT
 document.querySelectorAll(".tab").forEach(function(tab){tab.addEventListener("click",function(){document.querySelectorAll(".tab").forEach(function(t){t.classList.remove("active")});tab.classList.add("active");document.querySelectorAll(".view").forEach(function(v){v.classList.remove("active")});qs(tab.dataset.view+"View").classList.add("active")})});
 document.querySelectorAll(".nav-item[data-side]").forEach(function(btn){btn.addEventListener("click",function(){handleSidebar(btn.dataset.side)})});
 ["globalSearch","assigneeFilter","tagFilter","sortBy"].forEach(function(id){qs(id).addEventListener("input",render);qs(id).addEventListener("change",render)});
-qs("fFile").addEventListener("change",function(){
-  var file=this.files&&this.files[0];if(!file)return;
-  if(file.size>2500000){toast("ไฟล์ใหญ่เกินไป แนะนำไม่เกิน 2.5MB");this.value="";return}
-  var reader=new FileReader();
-  reader.onload=function(){pendingFile={name:file.name,data:String(reader.result||"")};renderPreview();};
-  reader.onerror=function(){toast("อ่านไฟล์ไม่สำเร็จ")};
-  reader.readAsDataURL(file);
+qs("fFile").addEventListener("change",async function(){
+  var input=this,file=input.files&&input.files[0];if(!file)return;
+  try{
+    if((file.type&&file.type.indexOf("image/")===0)||/\.(png|jpe?g|webp|gif)$/i.test(file.name)){
+      if(file.size>8000000){toast("รูปใหญ่เกินไป แนะนำไม่เกิน 8MB");input.value="";return}
+      toast("กำลังบีบอัดรูป...");
+      var data=await compressImageFile(file);
+      if(data.length>500000){toast("รูปยังใหญ่เกินไปหลังบีบอัด");input.value="";return}
+      pendingFile={name:file.name.replace(/\.[^.]+$/,"")+".jpg",data:data};
+      renderPreview();
+      toast("แนบรูปแล้ว");
+      return;
+    }
+    if(file.size>450000){toast("ไฟล์นี้ใหญ่เกินไปสำหรับ sync ข้าม browser");input.value="";return}
+    var reader=new FileReader();
+    reader.onload=function(){pendingFile={name:file.name,data:String(reader.result||"")};renderPreview();};
+    reader.onerror=function(){toast("อ่านไฟล์ไม่สำเร็จ")};
+    reader.readAsDataURL(file);
+  }catch(err){
+    console.warn(err);
+    toast("แนบไฟล์ไม่สำเร็จ");
+    input.value="";
+  }
 });
 qs("saveTaskBtn").addEventListener("click",function(){saveTask()});
 qs("loginUser").addEventListener("keydown",function(e){if(e.key==="Enter")doLogin()});
