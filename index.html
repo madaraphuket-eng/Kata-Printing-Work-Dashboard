@@ -396,7 +396,7 @@ var seed=[
   {id:9,name:"พิมพ์โปสเตอร์ A2",desc:"งานในร้าน เคลือบด้านและตัดขอบ",column:"guy",assignee:"กาย",due:"2026-05-31",tag:"งานพิมพ์ที่ร้าน",done:false,comments:1,attachments:0,score:3}
 ];
 var tasks=[],editingId=null,dragId=null,memoryStore={},pendingFile={name:"",data:""};
-var key="kata_project_dashboard_v1",sessionKey="kata_session_v1",usersKey="kata_users_v1",currentUser=null;
+var key="kata_project_dashboard_v1",dataSavedAtKey="kata_project_dashboard_saved_at_v1",sessionKey="kata_session_v1",usersKey="kata_users_v1",currentUser=null;
 var defaultUsers=[{username:"admin",password:"admin1234",displayName:"Admin",role:"admin"},{username:"kata",password:"1234",displayName:"Kata Team",role:"member"}],users=[];
 function storageGet(k){try{return window.localStorage?localStorage.getItem(k):memoryStore[k]}catch(e){return memoryStore[k]||null}}
 function storageSet(k,v){memoryStore[k]=v;try{if(window.localStorage)localStorage.setItem(k,v)}catch(e){}}
@@ -468,17 +468,20 @@ var _lastFirebaseSnapshot="",_lastLocalSaveAt=0;
 function load(){
   // Show local cache first, then let Firebase become the shared source of truth.
   try{tasks=JSON.parse(storageGet(key))||seed.slice()}catch(e){tasks=seed.slice()}
+  _lastLocalSaveAt=Number(storageGet(dataSavedAtKey))||0;
   render();
   // Real-time listener: never save from here, only hydrate local state.
   db.collection(fbCol).doc("tasks").onSnapshot(function(doc){
     if(doc.exists&&doc.data()&&Array.isArray(doc.data().list)){
       var remoteSavedAt=Number(doc.data().savedAt)||0;
-      if(_lastLocalSaveAt&&remoteSavedAt<_lastLocalSaveAt)return;
+      if(_lastLocalSaveAt&&remoteSavedAt<_lastLocalSaveAt){persistToFirebase(_lastLocalSaveAt);return;}
       var incoming=JSON.stringify(doc.data().list);
       if(incoming===_lastFirebaseSnapshot)return;
       _lastFirebaseSnapshot=incoming;
       tasks=doc.data().list;
       storageSet(key,JSON.stringify(tasks));
+      storageSet(dataSavedAtKey,String(remoteSavedAt||Date.now()));
+      _lastLocalSaveAt=remoteSavedAt||_lastLocalSaveAt;
       render();
       updateSavedAt("ซิงก์ล่าสุด ");
     } else {
@@ -486,12 +489,13 @@ function load(){
     }
   },function(e){console.warn("Firebase error",e);});
 }
-function persistToFirebase(){
+function persistToFirebase(savedAt){
   var tasksToSave=tasks.map(function(t){var c=Object.assign({},t);if(c.fileData&&c.fileData.length>500000)delete c.fileData;return c;});
-  var savedAt=Date.now();
+  savedAt=savedAt||Date.now();
   _lastLocalSaveAt=savedAt;
+  storageSet(dataSavedAtKey,String(savedAt));
   _lastFirebaseSnapshot=JSON.stringify(tasksToSave);
-  return db.collection(fbCol).doc("tasks").set({list:tasksToSave,savedAt:savedAt}).catch(function(e){console.warn("Firebase save error",e);toast("บันทึก Firebase ไม่สำเร็จ กรุณาเช็ก Rules/Internet");});
+  return db.collection(fbCol).doc("tasks").set({list:tasksToSave,savedAt:savedAt}).then(function(){return true;}).catch(function(e){console.warn("Firebase save error",e);toast("บันทึก Firebase ไม่สำเร็จ กรุณาเช็ก Rules/Internet");return false;});
 }
 function forceSyncToFirebase(){
   if(!isAdmin()){toast("เฉพาะ Admin เท่านั้น");return;}
@@ -502,8 +506,9 @@ function forceSyncToFirebase(){
 }
 function persist(){
   storageSet(key,JSON.stringify(tasks));
-  persistToFirebase();
+  var p=persistToFirebase();
   updateSavedAt("บันทึกล่าสุด ");
+  return p;
 }
 function updateSavedAt(prefix){
   var el=document.getElementById("updatedAt");
@@ -699,8 +704,9 @@ function openTask(id){
   qs("deleteBtn").style.visibility=(editingId&&isAdmin())?"visible":"hidden";qs("overlay").classList.add("open");qs("drawer").classList.add("open");setTimeout(function(){qs("fName").focus()},80);
 }
 function closeTask(){qs("overlay").classList.remove("open");qs("drawer").classList.remove("open");editingId=null}
-function saveTask(){
+async function saveTask(){
   try{
+    var saveBtn=qs("saveTaskBtn");
     if(editingId&&!isAdmin()){toast("Member แก้งานเดิมไม่ได้");return}
     var nameVal=qs("fName").value.trim();
     if(!nameVal){
@@ -744,10 +750,16 @@ function saveTask(){
     // reset filters so saved task is always visible
     qs("assigneeFilter").value="";
     qs("tagFilter").value="";
-    closeTask();persist();render();toast("✅ บันทึกทาส์กแล้ว");
+    if(saveBtn){saveBtn.disabled=true;saveBtn.textContent="กำลังบันทึก...";}
+    var savedOk=await persist();
+    if(!savedOk)return;
+    closeTask();render();toast("✅ บันทึกทาส์กแล้ว");
   }catch(err){
     console.error("saveTask error:",err);
     toast("บันทึกไม่สำเร็จ: "+(err&&err.message?err.message:"ตรวจสอบข้อมูลอีกครั้ง"));
+  }finally{
+    var btn=qs("saveTaskBtn");
+    if(btn){btn.disabled=false;btn.textContent="บันทึก";}
   }
 }
 function deleteTask(){if(!isAdmin()){toast("เฉพาะ Admin เท่านั้น");return}if(!editingId||!confirm("ลบทาส์กนี้?"))return;tasks=tasks.filter(function(t){return +t.id!==+editingId});closeTask();persist();render();toast("ลบทาส์กแล้ว")}
