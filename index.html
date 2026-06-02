@@ -463,30 +463,24 @@ function applyRolePermissions(){
   if(!admin&&document.querySelector(".view.active")&&document.querySelector(".view.active").id==="sideView")showView("board");
 }
 function load(){
-  // Load from localStorage first (fast start)
-  try{tasks=JSON.parse(storageGet(key))||seed.slice()}catch(e){tasks=seed.slice()}
-  // Then sync from Firebase
-  db.collection(fbCol).doc("tasks").get().then(function(doc){
-    if(doc.exists&&doc.data().list&&doc.data().list.length){
+  // Firebase is single source of truth — always load from Firebase first
+  db.collection(fbCol).doc("tasks").onSnapshot(function(doc){
+    if(doc.exists&&doc.data()&&doc.data().list&&doc.data().list.length){
       tasks=doc.data().list;
       storageSet(key,JSON.stringify(tasks));
     } else {
-      // First time — push seed data to Firebase
+      // Firebase empty — push localStorage or seed to Firebase
+      try{tasks=JSON.parse(storageGet(key))||seed.slice()}catch(e){tasks=seed.slice()}
+      if(!tasks.length)tasks=seed.slice();
       persistToFirebase();
     }
     render();
-  }).catch(function(e){console.warn("Firebase load error",e);render();});
-  // Real-time listener — sync changes from other users
-  db.collection(fbCol).doc("tasks").onSnapshot(function(doc){
-    if(doc.exists&&doc.data().list){
-      var incoming=JSON.stringify(doc.data().list);
-      if(incoming!==JSON.stringify(tasks)){
-        tasks=doc.data().list;
-        storageSet(key,JSON.stringify(tasks));
-        render();
-      }
-    }
-  },function(e){console.warn("snapshot error",e);});
+  },function(e){
+    // Firebase failed — fall back to localStorage
+    console.warn("Firebase error",e);
+    try{tasks=JSON.parse(storageGet(key))||seed.slice()}catch(ex){tasks=seed.slice()}
+    render();
+  });
 }
 function persistToFirebase(){
   var tasksToSave=tasks.map(function(t){var c=Object.assign({},t);if(c.fileData&&c.fileData.length>50000)delete c.fileData;return c;});
@@ -1015,7 +1009,7 @@ qs("saveTaskBtn").addEventListener("click",function(){saveTask()});
 qs("loginUser").addEventListener("keydown",function(e){if(e.key==="Enter")doLogin()});
 qs("loginPass").addEventListener("keydown",function(e){if(e.key==="Enter")doLogin()});
 document.addEventListener("keydown",function(e){if(e.key==="Escape"){closeTask();if(qs("viewModalBg").style.display!=="none")closeViewModalDirect();}});
-loadUsers();loadColumns();load();render();initAuth();initTheme();
+loadUsers();loadColumns();load();initAuth();initTheme();
 </script>
 
 <div id="colModalOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:60;align-items:center;justify-content:center" onclick="closeColModal(event)">
