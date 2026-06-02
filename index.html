@@ -466,18 +466,19 @@ function applyRolePermissions(){
 }
 var _lastFirebaseSnapshot="";
 function load(){
-  // Load localStorage for instant first render
+  // Show local cache first, then let Firebase become the shared source of truth.
   try{tasks=JSON.parse(storageGet(key))||seed.slice()}catch(e){tasks=seed.slice()}
   render();
-  // Real-time listener — only re-render when data actually changes
+  // Real-time listener: never save from here, only hydrate local state.
   db.collection(fbCol).doc("tasks").onSnapshot(function(doc){
-    if(doc.exists&&doc.data()&&doc.data().list&&doc.data().list.length>0){
+    if(doc.exists&&doc.data()&&Array.isArray(doc.data().list)){
       var incoming=JSON.stringify(doc.data().list);
-      if(incoming===_lastFirebaseSnapshot)return; // no change, skip render
+      if(incoming===_lastFirebaseSnapshot)return;
       _lastFirebaseSnapshot=incoming;
       tasks=doc.data().list;
       storageSet(key,JSON.stringify(tasks));
       render();
+      updateSavedAt("ซิงก์ล่าสุด ");
     } else {
       if(tasks.length>0){persistToFirebase();}
     }
@@ -485,7 +486,8 @@ function load(){
 }
 function persistToFirebase(){
   var tasksToSave=tasks.map(function(t){var c=Object.assign({},t);if(c.fileData&&c.fileData.length>500000)delete c.fileData;return c;});
-  db.collection(fbCol).doc("tasks").set({list:tasksToSave,savedAt:Date.now()}).catch(function(e){console.warn("Firebase save error",e);});
+  _lastFirebaseSnapshot=JSON.stringify(tasksToSave);
+  return db.collection(fbCol).doc("tasks").set({list:tasksToSave,savedAt:Date.now()}).catch(function(e){console.warn("Firebase save error",e);toast("บันทึก Firebase ไม่สำเร็จ กรุณาเช็ก Rules/Internet");});
 }
 function forceSyncToFirebase(){
   if(!isAdmin()){toast("เฉพาะ Admin เท่านั้น");return;}
@@ -497,7 +499,11 @@ function forceSyncToFirebase(){
 function persist(){
   storageSet(key,JSON.stringify(tasks));
   persistToFirebase();
-  document.getElementById("updatedAt").textContent="บันทึกล่าสุด "+new Date().toLocaleString("th-TH",{dateStyle:"medium",timeStyle:"short"});
+  updateSavedAt("บันทึกล่าสุด ");
+}
+function updateSavedAt(prefix){
+  var el=document.getElementById("updatedAt");
+  if(el)el.textContent=(prefix||"บันทึกล่าสุด ")+new Date().toLocaleString("th-TH",{dateStyle:"medium",timeStyle:"short"});
 }
 function qs(id){return document.getElementById(id)}
 function escapeHtml(s){return String(s||"").replace(/[&<>"']/g,function(c){return({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])})}
@@ -517,7 +523,7 @@ function filtered(){
   return out;
 }
 function render(){
-  renderFilters();renderBoard();renderTable();renderAnalytics();renderFiles();persist();renderBanner();
+  renderFilters();renderBoard();renderTable();renderAnalytics();renderFiles();renderBanner();
 }
 function renderFilters(){
   fillSelect(qs("assigneeFilter"),[""].concat(people),"ผู้รับทั้งหมด",qs("assigneeFilter").value);
@@ -734,14 +740,14 @@ function saveTask(){
     // reset filters so saved task is always visible
     qs("assigneeFilter").value="";
     qs("tagFilter").value="";
-    closeTask();render();toast("✅ บันทึกทาส์กแล้ว");
+    closeTask();persist();render();toast("✅ บันทึกทาส์กแล้ว");
   }catch(err){
     console.error("saveTask error:",err);
     toast("บันทึกไม่สำเร็จ: "+(err&&err.message?err.message:"ตรวจสอบข้อมูลอีกครั้ง"));
   }
 }
-function deleteTask(){if(!isAdmin()){toast("เฉพาะ Admin เท่านั้น");return}if(!editingId||!confirm("ลบทาส์กนี้?"))return;tasks=tasks.filter(function(t){return +t.id!==+editingId});closeTask();render();toast("ลบทาส์กแล้ว")}
-function moveTask(id,col){tasks=tasks.map(function(t){if(+t.id===+id)t.column=col;return t});render();toast("ย้ายคอลัมน์แล้ว")}
+function deleteTask(){if(!isAdmin()){toast("เฉพาะ Admin เท่านั้น");return}if(!editingId||!confirm("ลบทาส์กนี้?"))return;tasks=tasks.filter(function(t){return +t.id!==+editingId});closeTask();persist();render();toast("ลบทาส์กแล้ว")}
+function moveTask(id,col){tasks=tasks.map(function(t){if(+t.id===+id)t.column=col;return t});persist();render();toast("ย้ายคอลัมน์แล้ว")}
 function fmtDate(s){if(!s)return"-";return dateObj(s).toLocaleDateString("th-TH",{day:"numeric",month:"short",year:"2-digit"})}
 function initials(s){return String(s||"?").slice(0,2).toUpperCase()}
 function exportCSV(){
@@ -749,7 +755,7 @@ function exportCSV(){
   var csv=rows.map(function(r){return r.map(function(v){return'"'+String(v||"").replace(/"/g,'""')+'"'}).join(",")}).join("\n");
   var a=document.createElement("a");a.href=URL.createObjectURL(new Blob(["\ufeff"+csv],{type:"text/csv;charset=utf-8"}));a.download="kataprinting_tasks.csv";a.click();URL.revokeObjectURL(a.href);
 }
-function resetSeed(){if(confirm("กู้ข้อมูลตั้งต้นและแทนที่ข้อมูลปัจจุบัน?")){tasks=seed.slice();render();toast("กู้ข้อมูลตั้งต้นแล้ว")}}
+function resetSeed(){if(confirm("กู้ข้อมูลตั้งต้นและแทนที่ข้อมูลปัจจุบัน?")){tasks=seed.slice();persist();render();toast("กู้ข้อมูลตั้งต้นแล้ว")}}
 function toast(msg){var e=qs("toast");e.textContent=msg;e.classList.add("show");setTimeout(function(){e.classList.remove("show")},1800)}
 
 
