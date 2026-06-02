@@ -254,7 +254,7 @@ tr:last-child td{border-bottom:0}
       <button class="icon-btn" title="ช่วยเหลือ">?</button>
       <button class="icon-btn" title="การแจ้งเตือน">🔔</button>
       <div class="profile"><div id="profileAvatar" class="avatar">AD</div><span id="profileName">Admin</span></div>
-      <button id="themeBtn" onclick="toggleTheme()" style="display:flex;align-items:center;gap:5px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);color:#fff;border-radius:7px;padding:0 11px;height:34px;font-size:13px;font-weight:700;cursor:pointer" title="สลับธีม">🌙 มืด</button><button onclick="doLogout()" style="display:flex;align-items:center;gap:6px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);color:#fff;border-radius:7px;padding:0 13px;height:34px;font-size:13px;font-weight:700;cursor:pointer;transition:background .15s" onmouseover="this.style.background='rgba(244,67,54,.75)'" onmouseout="this.style.background='rgba(255,255,255,.12)'">🚪 ออกจากระบบ</button>
+      <button id="themeBtn" onclick="toggleTheme()" style="display:flex;align-items:center;gap:5px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);color:#fff;border-radius:7px;padding:0 11px;height:34px;font-size:13px;font-weight:700;cursor:pointer" title="สลับธีม">🌙 มืด</button><button onclick="doLogout()" style="display:flex;align-items:center;gap:6px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);color:#fff;border-radius:7px;padding:0 13px;height:34px;font-size:13px;font-weight:700;cursor:pointer;transition:background .15s" onmouseover="this.style.background='rgba(244,67,54,.75)'" onmouseout="this.style.background='rgba(255,255,255,.12)'">🚪 ออกจากระบบ</button><button id="syncBtn" onclick="forceSyncToFirebase()" style="display:none;align-items:center;gap:6px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);color:#fff;border-radius:7px;padding:0 13px;height:34px;font-size:13px;font-weight:700;cursor:pointer;transition:background .15s" onmouseover="this.style.background='rgba(0,188,212,.6)'" onmouseout="this.style.background='rgba(255,255,255,.12)'">☁️ Sync Firebase</button>
     </div>
   </header>
   <div class="layout">
@@ -425,7 +425,7 @@ function syncPeople(){people=["เบส","แพรว","กาย","แป๊�
 function isAdmin(){return currentUser&&currentUser.role==="admin"}
 function initAuth(){
   try{currentUser=JSON.parse(storageGet(sessionKey)||"null")}catch(e){currentUser=null}
-  if(currentUser&&currentUser.username){showDashboard()}else{showLogin()}
+  if(currentUser&&currentUser.username){showDashboard();showSyncBtn();}else{showLogin()}
 }
 function showLogin(){
   qs("loginScreen").classList.remove("hidden");
@@ -447,7 +447,9 @@ function doLogin(){
   err.textContent="";
   showDashboard();
   toast("เข้าสู่ระบบแล้ว");
+  var sb=qs("syncBtn");if(sb)sb.style.display=isAdmin()?"flex":"none";
 }
+function showSyncBtn(){var sb=qs("syncBtn");if(sb)sb.style.display=isAdmin()?"flex":"none";}
 function doLogout(){
   storageRemove(sessionKey);
   currentUser=null;
@@ -463,28 +465,32 @@ function applyRolePermissions(){
   if(!admin&&document.querySelector(".view.active")&&document.querySelector(".view.active").id==="sideView")showView("board");
 }
 function load(){
-  // 1. Load localStorage immediately for instant render
+  // Load localStorage for instant first render
   try{tasks=JSON.parse(storageGet(key))||seed.slice()}catch(e){tasks=seed.slice()}
   render();
-  // 2. onSnapshot — real-time sync, only overwrite if Firebase has valid data
+  // Real-time listener — Firebase is always source of truth
   db.collection(fbCol).doc("tasks").onSnapshot(function(doc){
     if(doc.exists&&doc.data()&&doc.data().list&&doc.data().list.length>0){
-      var fbTasks=doc.data().list;
-      // Only update if Firebase has same or more tasks than local (prevent overwrite with old data)
-      if(fbTasks.length>=tasks.length||tasks.length===0){
-        tasks=fbTasks;
-        storageSet(key,JSON.stringify(tasks));
-        render();
-      }
-    } else if(tasks.length>0){
-      // Firebase empty but we have local data — push to Firebase
-      persistToFirebase();
+      // Firebase has data — always use it
+      tasks=doc.data().list;
+      storageSet(key,JSON.stringify(tasks));
+      render();
+    } else {
+      // Firebase empty — push local data up
+      if(tasks.length>0){persistToFirebase();}
     }
-  },function(e){console.warn("Firebase snapshot error",e);});
+  },function(e){console.warn("Firebase error",e);});
 }
 function persistToFirebase(){
-  var tasksToSave=tasks.map(function(t){var c=Object.assign({},t);if(c.fileData&&c.fileData.length>50000)delete c.fileData;return c;});
-  db.collection(fbCol).doc("tasks").set({list:tasksToSave}).catch(function(e){console.warn("Firebase save error",e);});
+  var tasksToSave=tasks.map(function(t){var c=Object.assign({},t);if(c.fileData&&c.fileData.length>500000)delete c.fileData;return c;});
+  db.collection(fbCol).doc("tasks").set({list:tasksToSave,savedAt:Date.now()}).catch(function(e){console.warn("Firebase save error",e);});
+}
+function forceSyncToFirebase(){
+  if(!isAdmin()){toast("เฉพาะ Admin เท่านั้น");return;}
+  persistToFirebase();
+  saveUsers();
+  saveColumns();
+  toast("✅ Sync ข้อมูลขึ้น Firebase แล้ว");
 }
 function persist(){
   storageSet(key,JSON.stringify(tasks));
@@ -993,7 +999,7 @@ function toggleTheme(){
   var cur=document.documentElement.getAttribute("data-theme")||"light";
   applyTheme(cur==="dark"?"light":"dark");
 }
-Object.assign(window,{doLogin:doLogin,doLogout:doLogout,openTask:openTask,closeTask:closeTask,saveTask:saveTask,deleteTask:deleteTask,exportCSV:exportCSV,resetSeed:resetSeed,handleSidebar:handleSidebar,createUserAccount:createUserAccount,deleteUserAccount:deleteUserAccount,clearFile:clearFile,toast:toast,toggleTheme:toggleTheme,doChangePassword:doChangePassword,openViewModal:openViewModal,closeViewModal:closeViewModal,closeViewModalDirect:closeViewModalDirect,openColModal:openColModal,saveColModal:saveColModal,closeColModal:closeColModal,closeColModalDirect:closeColModalDirect,deleteColumn:deleteColumn,pickSwatch:pickSwatch});
+Object.assign(window,{doLogin:doLogin,doLogout:doLogout,openTask:openTask,closeTask:closeTask,saveTask:saveTask,deleteTask:deleteTask,exportCSV:exportCSV,resetSeed:resetSeed,handleSidebar:handleSidebar,createUserAccount:createUserAccount,deleteUserAccount:deleteUserAccount,clearFile:clearFile,toast:toast,toggleTheme:toggleTheme,doChangePassword:doChangePassword,openViewModal:openViewModal,closeViewModal:closeViewModal,closeViewModalDirect:closeViewModalDirect,openColModal:openColModal,forceSyncToFirebase:forceSyncToFirebase,saveColModal:saveColModal,closeColModal:closeColModal,closeColModalDirect:closeColModalDirect,deleteColumn:deleteColumn,pickSwatch:pickSwatch});
 document.querySelectorAll(".tab").forEach(function(tab){tab.addEventListener("click",function(){document.querySelectorAll(".tab").forEach(function(t){t.classList.remove("active")});tab.classList.add("active");document.querySelectorAll(".view").forEach(function(v){v.classList.remove("active")});qs(tab.dataset.view+"View").classList.add("active")})});
 document.querySelectorAll(".nav-item[data-side]").forEach(function(btn){btn.addEventListener("click",function(){handleSidebar(btn.dataset.side)})});
 ["globalSearch","assigneeFilter","tagFilter","sortBy"].forEach(function(id){qs(id).addEventListener("input",render);qs(id).addEventListener("change",render)});
