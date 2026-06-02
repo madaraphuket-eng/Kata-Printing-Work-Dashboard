@@ -464,7 +464,7 @@ function applyRolePermissions(){
   if(usersNav)usersNav.style.display=admin?"flex":"none";
   if(!admin&&document.querySelector(".view.active")&&document.querySelector(".view.active").id==="sideView")showView("board");
 }
-var _lastFirebaseSnapshot="";
+var _lastFirebaseSnapshot="",_lastLocalSaveAt=0;
 function load(){
   // Show local cache first, then let Firebase become the shared source of truth.
   try{tasks=JSON.parse(storageGet(key))||seed.slice()}catch(e){tasks=seed.slice()}
@@ -472,6 +472,8 @@ function load(){
   // Real-time listener: never save from here, only hydrate local state.
   db.collection(fbCol).doc("tasks").onSnapshot(function(doc){
     if(doc.exists&&doc.data()&&Array.isArray(doc.data().list)){
+      var remoteSavedAt=Number(doc.data().savedAt)||0;
+      if(_lastLocalSaveAt&&remoteSavedAt<_lastLocalSaveAt)return;
       var incoming=JSON.stringify(doc.data().list);
       if(incoming===_lastFirebaseSnapshot)return;
       _lastFirebaseSnapshot=incoming;
@@ -486,8 +488,10 @@ function load(){
 }
 function persistToFirebase(){
   var tasksToSave=tasks.map(function(t){var c=Object.assign({},t);if(c.fileData&&c.fileData.length>500000)delete c.fileData;return c;});
+  var savedAt=Date.now();
+  _lastLocalSaveAt=savedAt;
   _lastFirebaseSnapshot=JSON.stringify(tasksToSave);
-  return db.collection(fbCol).doc("tasks").set({list:tasksToSave,savedAt:Date.now()}).catch(function(e){console.warn("Firebase save error",e);toast("บันทึก Firebase ไม่สำเร็จ กรุณาเช็ก Rules/Internet");});
+  return db.collection(fbCol).doc("tasks").set({list:tasksToSave,savedAt:savedAt}).catch(function(e){console.warn("Firebase save error",e);toast("บันทึก Firebase ไม่สำเร็จ กรุณาเช็ก Rules/Internet");});
 }
 function forceSyncToFirebase(){
   if(!isAdmin()){toast("เฉพาะ Admin เท่านั้น");return;}
