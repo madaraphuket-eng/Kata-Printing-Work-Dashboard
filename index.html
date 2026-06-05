@@ -331,7 +331,7 @@ tr:last-child td{border-bottom:0}
   <div class="drawer-head"><h2 id="drawerTitle" class="drawer-title">เพิ่มทาส์ก</h2><button class="icon-btn" style="color:#334155" onclick="closeTask()">✕</button></div>
   <div class="drawer-body">
     <div class="form-grid">
-      <div class="field wide"><label>ชื่อทาส์ก</label><input id="fName"></div>
+      <div class="field wide"><label>ชื่อทาส์ก</label><input id="fName"><small id="fNameError" style="color:var(--danger);font-size:12px;font-weight:800;display:none;margin-top:4px">⚠️ กรุณากรอกชื่อทาส์ก</small></div>
       <div class="field wide"><label>คำอธิบาย</label><textarea id="fDesc"></textarea></div>
       <div class="field"><label>คอลัมน์</label><select id="fColumn"></select></div>
       <div class="field"><label>ผู้รับมอบหมาย</label><select id="fAssignee"></select></div>
@@ -730,6 +730,7 @@ function openTask(id){
 }
 function closeTask(){qs("saveTaskBtn").removeAttribute("disabled");qs("saveTaskBtn").textContent="บันทึก";qs("overlay").classList.remove("open");qs("drawer").classList.remove("open");editingId=null}
 function saveTask(){
+  var _saveOk=false;
   try{
     var saveBtn=qs("saveTaskBtn");
     // all roles can save edits
@@ -737,12 +738,14 @@ function saveTask(){
     if(!nameVal){
       qs("fName").style.outline="2px solid var(--danger)";
       qs("fName").style.borderColor="var(--danger)";
+      var errEl=qs("fNameError");if(errEl)errEl.style.display="block";
       qs("fName").focus();
       toast("⚠️ กรุณากรอกชื่อทาส์ก");
       return;
     }
     qs("fName").style.outline="";
     qs("fName").style.borderColor="";
+    var errEl=qs("fNameError");if(errEl)errEl.style.display="none";
     var attachCount=pendingFile.data?1:0;
     var t={
       id:editingId||Date.now(),
@@ -776,13 +779,14 @@ function saveTask(){
     qs("assigneeFilter").value="";
     qs("tagFilter").value="";
     persist();
-    closeTask();render();toast("✅ บันทึกทาส์กแล้ว กำลัง Sync");
+    _saveOk=true;
   }catch(err){
     console.error("saveTask error:",err);
     toast("บันทึกไม่สำเร็จ: "+(err&&err.message?err.message:"ตรวจสอบข้อมูลอีกครั้ง"));
   }finally{
     var btn=qs("saveTaskBtn");
     if(btn){btn.removeAttribute("disabled");btn.textContent="บันทึก";}
+    if(_saveOk){closeTask();render();toast("✅ บันทึกทาส์กแล้ว กำลัง Sync");}
   }
 }
 window.saveTask=saveTask;
