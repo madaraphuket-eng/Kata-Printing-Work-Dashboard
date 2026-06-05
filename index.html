@@ -778,10 +778,8 @@ async function saveTask(){
     qs("assigneeFilter").value="";
     qs("tagFilter").value="";
     isSavingTask=true;
-    if(saveBtn){saveBtn.disabled=true;saveBtn.textContent="กำลังบันทึก...";}
-    var savedOk=await persist();
-    if(!savedOk)return;
-    closeTask();render();toast("✅ บันทึกทาส์กแล้ว");
+    persist();
+    closeTask();render();toast("✅ บันทึกทาส์กแล้ว กำลัง Sync");
   }catch(err){
     console.error("saveTask error:",err);
     toast("บันทึกไม่สำเร็จ: "+(err&&err.message?err.message:"ตรวจสอบข้อมูลอีกครั้ง"));
