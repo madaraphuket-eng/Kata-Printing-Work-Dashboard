@@ -716,7 +716,7 @@ function openTask(id){
   editingId=(id!==undefined&&id!==null&&id!=="")?(+id||id):null;
   var today=new Date().toISOString().slice(0,10);
   var t=tasks.find(function(x){return +x.id===+editingId})||{name:"",desc:"",column:"lead",assignee:people[0],due:today,tag:tags[0],done:false,comments:0,attachments:0,score:5,fileName:"",fileData:""};
-  if(!isAdmin()&&editingId){openViewModal(editingId);return;}
+  // all roles can open edit drawer
   if(!editingId&&currentUser)t.assignee=currentUser.displayName||currentUser.username;
   pendingFile={name:t.fileName||"",data:t.fileData||""};
   qs("drawerTitle").textContent=editingId?"รายละเอียดทาส์ก":"เพิ่มทาส์ก";
@@ -732,7 +732,7 @@ function closeTask(){qs("saveTaskBtn").removeAttribute("disabled");qs("saveTaskB
 function saveTask(){
   try{
     var saveBtn=qs("saveTaskBtn");
-    if(editingId&&!isAdmin()){toast("Member แก้งานเดิมไม่ได้");return}
+    // all roles can save edits
     var nameVal=qs("fName").value.trim();
     if(!nameVal){
       qs("fName").style.outline="2px solid var(--danger)";
