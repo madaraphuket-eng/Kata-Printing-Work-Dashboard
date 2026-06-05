@@ -355,7 +355,7 @@ tr:last-child td{border-bottom:0}
   </div>
   <div class="drawer-foot">
     <button id="deleteBtn" class="btn danger" onclick="deleteTask()">ลบทาส์ก</button>
-    <div style="display:flex;gap:8px"><button class="btn" type="button" onclick="closeTask()">ยกเลิก</button><button id="saveTaskBtn" class="btn primary" type="button">บันทึก</button></div>
+    <div style="display:flex;gap:8px"><button class="btn" type="button" onclick="closeTask()">ยกเลิก</button><button id="saveTaskBtn" class="btn primary" type="button" onclick="saveTask()">บันทึก</button></div>
   </div>
 </aside>
 <div id="toast" class="toast"></div>
@@ -730,7 +730,7 @@ function openTask(id){
   qs("deleteBtn").style.visibility=(editingId&&isAdmin())?"visible":"hidden";qs("overlay").classList.add("open");qs("drawer").classList.add("open");setTimeout(function(){qs("fName").focus()},80);
 }
 function closeTask(){isSavingTask=false;qs("saveTaskBtn").disabled=false;qs("saveTaskBtn").textContent="บันทึก";qs("overlay").classList.remove("open");qs("drawer").classList.remove("open");editingId=null}
-async function saveTask(){
+function saveTask(){
   try{
     var saveBtn=qs("saveTaskBtn");
     if(isSavingTask)return;
@@ -1078,7 +1078,6 @@ qs("fFile").addEventListener("change",async function(){
     input.value="";
   }
 });
-qs("saveTaskBtn").addEventListener("click",function(){saveTask()});
 qs("loginUser").addEventListener("keydown",function(e){if(e.key==="Enter")doLogin()});
 qs("loginPass").addEventListener("keydown",function(e){if(e.key==="Enter")doLogin()});
 document.addEventListener("keydown",function(e){if(e.key==="Escape"){closeTask();if(qs("viewModalBg").style.display!=="none")closeViewModalDirect();}});
